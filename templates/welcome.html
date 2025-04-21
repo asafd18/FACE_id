@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome {{ username }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+        .image-preview {
+            margin-top: 20px;
+            max-width: 400px;
+        }
+        .button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, {{ username }}!</h1>
+
+        <!-- טופס לשמירת נתונים טקסטואליים -->
+        <h3>Your saved data: {{ saved_data }}</h3>
+        <form method="POST">
+            <label for="user_input">Enter your data:</label>
+            <input type="text" name="user_input" id="user_input">
+            <button type="submit" class="button">Save</button>
+        </form>
+
+        <!-- טופס להעלאת תמונה -->
+        <h3>Convert Image to Sketch</h3>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="image" accept="image/*" required>
+            <button type="submit" class="button">Convert to Sketch</button>
+        </form>
+
+        <!-- הצגת התמונה המעובדת -->
+        {% if sketch_image %}
+            <h3>Your Sketch:</h3>
+            <img src="{{ url_for('uploaded_file', filename=sketch_image) }}" class="image-preview">
+            <br>
+            <a href="{{ url_for('uploaded_file', filename=sketch_image) }}" download class="button">Download Sketch</a>
+        {% endif %}
+    </div>
+</body>
+</html>

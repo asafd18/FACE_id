@@ -1,4 +1,6 @@
 import tkinter as tk
+import webbrowser
+
 import cv2
 from PIL import Image, ImageTk
 import util  # נדרש קובץ בשם util.py
@@ -61,23 +63,23 @@ class App:
             output_text = output.decode('utf-8').strip()
             print("Recognition output:", output_text)
 
-            # תנאים למשתמש לא מזוהה
             if (
-                not output_text or
-                'unknown_person' in output_text.lower() or
-                'no_persons_found' in output_text.lower() or
-                ',' not in output_text
+                    not output_text or
+                    'unknown_person' in output_text.lower() or
+                    'no_persons_found' in output_text.lower() or
+                    ',' not in output_text
             ):
                 self.show_unknown_user_screen()
             else:
-                # שליפה של שם המשתמש
                 name = output_text.split(',')[1].strip()
                 util.msg_box('Welcome back!', f'Welcome, {name}')
+
+                # פתיחת דף מותאם בשרת המקומי
+                webbrowser.open(f"http://127.0.0.1:5000/login/{name}")
 
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
             util.msg_box('Error', f'Face recognition failed: {e}')
-
     def show_unknown_user_screen(self):
         # הסתרת כל הרכיבים הקיימים
         self.login_button_main_window.place_forget()
