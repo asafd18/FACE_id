@@ -2,13 +2,13 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Welcome {{ username }}</title>
+    <title>דף משתמש - {{ username }}</title>
     <style>
         body {
             margin: 0;
             padding: 0;
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+            background: linear-gradient(135deg, #a1c4fd, #c2e9fb);
             height: 100vh;
             display: flex;
             justify-content: center;
@@ -22,42 +22,26 @@
             border-radius: 20px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
             text-align: center;
-            max-width: 500px;
+            max-width: 600px;
             width: 90%;
         }
 
         h1 {
-            font-size: 2.8em;
+            font-size: 2.5em;
             margin-bottom: 20px;
             color: #4a4a4a;
         }
 
         p {
             font-size: 1.2em;
-            margin-bottom: 30px;
-        }
-
-        button {
-            padding: 15px 30px;
-            font-size: 1em;
-            background-color: #4facfe;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-
-        button:hover {
-            background-color: #3b8edc;
+            color: #666;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>ברוך הבא, {{ username }}!</h1>
-        <p>הזיהוי הושלם בהצלחה. שמחים לראות אותך שוב!</p>
-        <button onclick="location.href='/user_page/{{ username }}'">המשך</button>
+        <h1>דף אישי של {{ username }}</h1>
+        <p>ברוכים הבאים לדף האישי שלך! כאן תוכל להוסיף תוכן מותאם אישית בעתיד.</p>
     </div>
 </body>
 </html>

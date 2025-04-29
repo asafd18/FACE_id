@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = './uploads'
+app.config['UPLOAD_FOLDER'] = './Uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
 
 db = SQLAlchemy(app)
@@ -88,8 +88,15 @@ def welcome(username):
 
     return render_template('welcome.html', username=username, saved_data=saved_data, sketch_image=sketch_image)
 
+# דף ריק מותאם למשתמש
+@app.route('/user_page/<username>')
+def user_page(username):
+    if 'username' not in session or session['username'] != username:
+        return "Unauthorized", 401
+    return render_template('user_page.html', username=username)
+
 # נתיב להורדת התמונה המעובדת
-@app.route('/uploads/<filename>')
+@app.route('/Uploads/<filename>')
 def uploaded_file(filename):
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
