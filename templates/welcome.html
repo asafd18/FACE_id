@@ -1,55 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="he" dir="rtl">
 <head>
+    <meta charset="UTF-8">
     <title>Welcome {{ username }}</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #333;
         }
+
         .container {
-            max-width: 800px;
-            margin: auto;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
         }
-        .image-preview {
-            margin-top: 20px;
-            max-width: 400px;
+
+        h1 {
+            font-size: 2.8em;
+            margin-bottom: 20px;
+            color: #4a4a4a;
         }
-        .button {
-            padding: 10px 20px;
-            margin: 10px;
-            font-size: 16px;
+
+        p {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1em;
+            background-color: #4facfe;
+            color: white;
+            border: none;
+            border-radius: 10px;
             cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #3b8edc;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Welcome, {{ username }}!</h1>
-
-        <!-- טופס לשמירת נתונים טקסטואליים -->
-        <h3>Your saved data: {{ saved_data }}</h3>
-        <form method="POST">
-            <label for="user_input">Enter your data:</label>
-            <input type="text" name="user_input" id="user_input">
-            <button type="submit" class="button">Save</button>
-        </form>
-
-        <!-- טופס להעלאת תמונה -->
-        <h3>Convert Image to Sketch</h3>
-        <form method="POST" enctype="multipart/form-data">
-            <input type="file" name="image" accept="image/*" required>
-            <button type="submit" class="button">Convert to Sketch</button>
-        </form>
-
-        <!-- הצגת התמונה המעובדת -->
-        {% if sketch_image %}
-            <h3>Your Sketch:</h3>
-            <img src="{{ url_for('uploaded_file', filename=sketch_image) }}" class="image-preview">
-            <br>
-            <a href="{{ url_for('uploaded_file', filename=sketch_image) }}" download class="button">Download Sketch</a>
-        {% endif %}
+        <h1>ברוך הבא, {{ username }}!</h1>
+        <p>הזיהוי הושלם בהצלחה. שמחים לראות אותך שוב!</p>
+        <button onclick="location.href='next_features.html'">המשך</button>
     </div>
 </body>
 </html>
