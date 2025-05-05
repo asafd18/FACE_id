@@ -112,6 +112,37 @@
             transform: translateY(0);
             box-shadow: 0 2px 5px rgba(102, 166, 255, 0.2);
         }
+
+        #videoContainer {
+            display: none;
+            margin-top: 20px;
+            position: relative;
+        }
+
+        #myVideo {
+            width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        #videoCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #log {
+            margin-top: 20px;
+            color: #2c3e50;
+            font-size: 0.9em;
+            max-height: 150px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -126,13 +157,120 @@
         <h1>דף אישי של {{ username }}</h1>
         <p>ברוכים הבאים לדף האישי שלך! כאן תוכל להוסיף תוכן מותאם אישית בעתיד.</p>
         <div class="buttons-container">
-            <button onclick="location.href='/page1'">עמוד 1</button>
-            <button onclick="location.href='/page2'">עמוד 2</button>
-            <button onclick="location.href='/page3'">עמוד 3</button>
-            <button onclick="location.href='/page4'">עמוד 4</button>
-            <button onclick="location.href='/page5'">עמוד 5</button>
-            <button onclick="location.href='/page6'">עמוד 6</button>
+            <button onclick="startFaceRecognition()">זיהוי פנים</button>
+            <button onclick="location.href='/page2'">face regansition</button>
+            <button onclick="location.href='/page3'">face regansition</button>
+            <button onclick="location.href='/page4'">face regansition</button>
+            <button onclick="location.href='/page5'">ace regansition</button>
+            <button onclick="location.href='/page6'">ace regansition</button>
         </div>
+        <div id="videoContainer">
+            <video id="myVideo" autoplay playsinline></video>
+            <canvas id="videoCanvas"></canvas>
+        </div>
+        <div id="log"></div>
     </div>
+
+    <!-- טעינת face-api.js מה-CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@0.0.3/dist/face-landmarks-detection.js"></script>
+    <script>
+        let stream = null;
+        let model = null;
+
+        // טעינת המודל של זיהוי תווי פנים
+        async function loadFaceDetectionModel() {
+            try {
+                model = await faceLandmarksDetection.load(
+                    faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+                );
+                console.log("Face detection model loaded successfully!");
+            } catch (error) {
+                console.error("Error loading face detection model:", error);
+            }
+        }
+
+        // הפעלת המצלמה וזיהוי הפנים
+        async function startFaceRecognition() {
+            const videoContainer = document.getElementById('videoContainer');
+            const video = document.getElementById('myVideo');
+            const canvas = document.getElementById('videoCanvas');
+            const ctx = canvas.getContext('2d');
+            const log = document.getElementById('log');
+
+            // הצגת הווידאו
+            videoContainer.style.display = 'block';
+
+            // גישה למצלמה
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+
+                // הגדרת גודל הקנבס להתאים לווידאו
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                };
+
+                // טעינת המודל אם עדיין לא נטען
+                if (!model) {
+                    await loadFaceDetectionModel();
+                }
+
+                // לולאה לזיהוי תווי פנים בזמן אמת
+                async function detectFaces() {
+                    if (!model || video.paused || video.ended) return;
+
+                    const predictions = await model.estimateFaces({
+                        input: video,
+                        returnTensors: false,
+                        flipHorizontal: false
+                    });
+
+                    // ניקוי הקנבס
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    log.innerHTML = `נמצאו ${predictions.length} פנים במסגרת זו.<br>`;
+
+                    predictions.forEach((prediction, index) => {
+                        const keypoints = prediction.scaledMesh;
+                        const annotations = prediction.annotations;
+
+                        // הדפסת נקודות תווי הפנים בדומה לקוד Python
+                        for (let feature in annotations) {
+                            const points = annotations[feature];
+                            log.innerHTML += `ה-${feature} בפנים ${index + 1} מכיל את הנקודות: [${points.map(p => `[${p[0].toFixed(2)}, ${p[1].toFixed(2)}]`).join(', ')}]<br>`;
+                            // ציור קווים בין הנקודות
+                            ctx.beginPath();
+                            ctx.strokeStyle = 'red';
+                            ctx.lineWidth = 2;
+                            for (let i = 0; i < points.length - 1; i++) {
+                                ctx.moveTo(points[i][0], points[i][1]);
+                                ctx.lineTo(points[i + 1][0], points[i + 1][1]);
+                            }
+                            ctx.stroke();
+                        }
+                    });
+
+                    requestAnimationFrame(detectFaces);
+                }
+
+                // התחלת זיהוי הפנים
+                video.onplay = () => {
+                    detectFaces();
+                };
+            } catch (error) {
+                console.error("Error accessing the camera:", error);
+                alert("שגיאה בפתיחת המצלמה. ודא שהמצלמה זמינה ושנתת הרשאה.");
+            }
+        }
+
+        // סגירת המצלמה אם הדף נסגר
+        window.onbeforeunload = () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        };
+    </script>
 </body>
 </html>
