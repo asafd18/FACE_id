@@ -86,16 +86,33 @@ def welcome(username):
     user_data = UserData.query.filter_by(username=username).first()
     saved_data = user_data.data if user_data else saved_data
 
-    return render_template('welcome.html', username=username, saved_data=saved_data, sketch_image=sketch_image)
+    # בדיקה אם קיימת תמונת משתמש בתיקיית db
+    profile_image = f"{username}.jpg"
+    profile_image_path = os.path.join('./db', profile_image)
+    if not os.path.exists(profile_image_path):
+        profile_image = None
+
+    return render_template('welcome.html', username=username, saved_data=saved_data, sketch_image=sketch_image, profile_image=profile_image)
 
 # דף ריק מותאם למשתמש
 @app.route('/user_page/<username>')
 def user_page(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
-    return render_template('user_page.html', username=username)
 
-# נתיב להורדת התמונה המעובדת
+    # בדיקה אם קיימת תמונת משתמש בתיקיית db
+    profile_image = f"{username}.jpg"
+    profile_image_path = os.path.join('./db', profile_image)
+    if not os.path.exists(profile_image_path):
+        profile_image = None
+
+    return render_template('user_page.html', username=username, profile_image=profile_image)
+
+# נתיב להורדת התמונה המעובדת או תמונת פרופיל
+@app.route('/db/<filename>')
+def profile_file(filename):
+    return send_file(os.path.join('./db', filename))
+
 @app.route('/Uploads/<filename>')
 def uploaded_file(filename):
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
