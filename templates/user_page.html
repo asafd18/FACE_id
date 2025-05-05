@@ -3,45 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <title>דף משתמש - {{ username }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body {
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', Arial, sans-serif;
+            font-family: 'Rubik', 'Segoe UI', Arial, sans-serif;
             background: linear-gradient(135deg, #a1c4fd, #c2e9fb);
             height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             color: #333;
+            overflow: hidden;
         }
 
         .container {
-            background-color: rgba(255, 255, 255, 0.9);
+            background-color: rgba(255, 255, 255, 0.95);
             padding: 40px;
             border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
             text-align: center;
             max-width: 600px;
             width: 90%;
+            animation: fadeIn 0.8s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .profile-img-container {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+        }
+
+        .profile-img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #66a6ff;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .profile-img:hover {
+            transform: scale(1.1);
+            border-color: #4facfe;
+        }
+
+        .profile-img-container::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            background: rgba(102, 166, 255, 0.2);
+            border-radius: 50%;
+            z-index: -1;
         }
 
         h1 {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-            color: #4a4a4a;
+            font-size: 2.3em;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-weight: 700;
         }
 
         p {
-            font-size: 1.2em;
-            color: #666;
+            font-size: 1.1em;
+            color: #7f8c8d;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+
+        .buttons-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 1em;
+            font-weight: 500;
+            background-color: #66a6ff;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+            box-shadow: 0 3px 10px rgba(102, 166, 255, 0.3);
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #4facfe;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 166, 255, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(102, 166, 255, 0.2);
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <div class="profile-img-container">
+            {% if profile_image %}
+                <img src="/db/{{ profile_image }}" alt="Profile Image" class="profile-img">
+            {% else %}
+                <img src="/static/default_profile.png" alt="Default Profile Image" class="profile-img">
+            {% endif %}
+        </div>
         <h1>דף אישי של {{ username }}</h1>
         <p>ברוכים הבאים לדף האישי שלך! כאן תוכל להוסיף תוכן מותאם אישית בעתיד.</p>
+        <div class="buttons-container">
+            <button onclick="location.href='/page1'">עמוד 1</button>
+            <button onclick="location.href='/page2'">עמוד 2</button>
+            <button onclick="location.href='/page3'">עמוד 3</button>
+            <button onclick="location.href='/page4'">עמוד 4</button>
+            <button onclick="location.href='/page5'">עמוד 5</button>
+            <button onclick="location.href='/page6'">עמוד 6</button>
+        </div>
     </div>
 </body>
 </html>
