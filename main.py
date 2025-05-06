@@ -54,6 +54,14 @@ class App:
             self._label.configure(image=imgtk)
         self._label.after(20, self.process_webcam)
 
+    def stop_webcam(self):
+        # שחרור המצלמה
+        if 'cap' in self.__dict__:
+            self.cap.release()
+            del self.cap
+        # הסתרת תצוגת הווידאו
+        self.webcam_label.place_forget()
+
     def login(self):
         unknown_img_path = './.tmp.jpg'
         cv2.imwrite(unknown_img_path, self.most_recent_capture_arr)
@@ -74,12 +82,19 @@ class App:
                 name = output_text.split(',')[1].strip()
                 util.msg_box('Welcome back!', f'Welcome, {name}')
 
+                # עצירת המצלמה לאחר זיהוי מוצלח
+                self.stop_webcam()
+
                 # פתיחת דף מותאם בשרת המקומי
                 webbrowser.open(f"http://127.0.0.1:5000/login/{name}")
+
+                # סגירת החלון הראשי
+                self.main_window.destroy()
 
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
             util.msg_box('Error', f'Face recognition failed: {e}')
+
     def show_unknown_user_screen(self):
         # הסתרת כל הרכיבים הקיימים
         self.login_button_main_window.place_forget()
@@ -107,6 +122,9 @@ class App:
                 widget.destroy()
             if isinstance(widget, tk.Button) and widget.cget("text") == "Try Again":
                 widget.destroy()
+
+        # הפעלה מחדש של המצלמה
+        self.add_webcam(self.webcam_label)
 
     def register_new_user(self):
         self.register_new_user_window = tk.Toplevel(self.main_window)
