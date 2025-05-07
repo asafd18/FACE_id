@@ -10,12 +10,11 @@
             padding: 0;
             font-family: 'Rubik', 'Segoe UI', Arial, sans-serif;
             background: linear-gradient(135deg, #a1c4fd, #c2e9fb);
-            min-height: 100vh; /* שינוי מ-height ל-min-height כדי לאפשר גלילה */
+            min-height: 100vh;
             display: flex;
             justify-content: center;
-            align-items: flex-start; /* שינוי מ-center ל-flex-start */
+            align-items: flex-start;
             color: #333;
-            /* הסרת overflow: hidden כדי לאפשר גלילה */
         }
 
         .container {
@@ -26,7 +25,7 @@
             text-align: center;
             max-width: 600px;
             width: 90%;
-            margin: 20px 0; /* הוספת מרווח עליון ותחתון */
+            margin: 20px 0;
             animation: fadeIn 0.8s ease-in-out;
         }
 
@@ -160,7 +159,6 @@
         <div class="buttons-container">
             <button onclick="startFaceRecognition()">זיהוי פנים (דפדפן)</button>
             <button onclick="startServerFaceRecognition()">זיהוי פנים (שרת)</button>
-            <button onclick="stopServerFaceRecognition()">עצירת זיהוי (שרת)</button>
             <button onclick="location.href='/page3'">זיהוי פנים 3</button>
             <button onclick="location.href='/page4'">זיהוי פנים 4</button>
             <button onclick="location.href='/page5'">זיהוי פנים 5</button>
@@ -265,48 +263,53 @@
             }
         }
 
-        // הפעלת זיהוי תווי פנים מהשרת
+        // הפעלת/עצירת זיהוי תווי פנים מהשרת (toggle)
         async function startServerFaceRecognition() {
             const videoContainer = document.getElementById('videoContainer');
             const video = document.getElementById('myVideo');
             const streamVideo = document.getElementById('streamVideo');
             const canvas = document.getElementById('videoCanvas');
-
-            // עצירת זיהוי הפנים המקומי אם הוא פעיל
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
-            }
-            video.style.display = 'none';
-            streamVideo.style.display = 'block';
-            videoContainer.style.display = 'block';
-            isServerStream = true;
-
-            // ניקוי הקנבס והלוג
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            document.getElementById('log').innerHTML = '';
+            const log = document.getElementById('log');
 
-            // הפעלת זרם הווידאו מהשרת
-            streamVideo.src = `/video_feed/{{ username }}`;
-        }
+            // בדיקה אם הזרם כבר פעיל
+            if (isServerStream) {
+                // עצירת הזרם אם הוא פעיל
+                try {
+                    const response = await fetch(`/stop_video_feed/{{ username }}`);
+                    const result = await response.text();
+                    console.log(result);
+                } catch (error) {
+                    console.error("Error stopping video feed:", error);
+                }
 
-        // עצירת זיהוי תווי הפנים מהשרת
-        async function stopServerFaceRecognition() {
-            const videoContainer = document.getElementById('videoContainer');
-            const streamVideo = document.getElementById('streamVideo');
+                streamVideo.src = '';
+                videoContainer.style.display = 'none';
+                isServerStream = false;
+                // עצירת זיהוי הפנים המקומי אם הוא פעיל
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+            } else {
+                // הפעלת הזרם אם הוא לא פעיל
+                // עצירת זיהוי הפנים המקומי אם הוא פעיל
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                video.style.display = 'none';
+                streamVideo.style.display = 'block';
+                videoContainer.style.display = 'block';
+                isServerStream = true;
 
-            try {
-                const response = await fetch(`/stop_video_feed/{{ username }}`);
-                const result = await response.text();
-                console.log(result);
-            } catch (error) {
-                console.error("Error stopping video feed:", error);
+                // ניקוי הקנבס והלוג
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                log.innerHTML = '';
+
+                // הפעלת זרם הווידאו מהשרת
+                streamVideo.src = `/video_feed/{{ username }}?t=${new Date().getTime()}`; // הוספת timestamp כדי למנוע קיבוע מטמון
             }
-
-            streamVideo.src = '';
-            videoContainer.style.display = 'none';
-            isServerStream = false;
         }
 
         // סגירת המצלמה אם הדף נסגר

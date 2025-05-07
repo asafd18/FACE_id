@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename
 import face_recognition
 from PIL import Image, ImageDraw
 import threading
+import time  # הוספתי עבור עיכוב
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
@@ -52,11 +53,18 @@ def convert_to_sketch(img):
 def generate_frames():
     global video_capture, running
 
-    if video_capture is None or not video_capture.isOpened():
-        video_capture = cv2.VideoCapture(0)
-        if not video_capture.isOpened():
-            print("Error: Could not open webcam.")
-            return
+    # וידוא שהמצלמה משוחררת לפני הפתיחה
+    if video_capture is not None:
+        video_capture.release()
+        video_capture = None
+        print("Previous video capture released.")
+
+    # פתיחת המצלמה
+    video_capture = cv2.VideoCapture(0)
+    if not video_capture.isOpened():
+        print("Error: Could not open webcam.")
+        return
+    print("Webcam opened successfully.")
 
     running = True
 
@@ -81,6 +89,9 @@ def generate_frames():
 
             # המרת הפריים לפורמט JPEG
             ret, buffer = cv2.imencode('.jpg', opencv_image)
+            if not ret:
+                print("Error: Could not encode frame to JPEG.")
+                continue
             frame = buffer.tobytes()
 
             # שליחת הפריים כחלק מזרם MJPEG
@@ -88,12 +99,14 @@ def generate_frames():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error during streaming: {e}")
 
     finally:
         if video_capture is not None:
             video_capture.release()
             video_capture = None
+            print("Video capture released in finally block.")
+            time.sleep(0.5)  # עיכוב קל כדי לתת למערכת זמן לשחרר את המשאבים
         running = False
         print("Video stream stopped and resources released.")
 
@@ -177,6 +190,8 @@ def stop_video_feed(username):
     if video_capture is not None:
         video_capture.release()
         video_capture = None
+        print("Video capture released in stop_video_feed.")
+        time.sleep(0.5)  # עיכוב קל כדי לתת למערכת זמן לשחרר את המשאבים
     return "Video stream stopped."
 
 # נתיב להורדת התמונה המעובדת או תמונת פרופיל
