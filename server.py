@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request, session, redirect, url_for, send_file
+from flask import Flask, render_template, request, session, redirect, url_for, send_file, Response
 from flask_sqlalchemy import SQLAlchemy
 import os
 import cv2
 import numpy as np
 from werkzeug.utils import secure_filename
+import face_recognition
+from PIL import Image, ImageDraw
+import threading
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
@@ -17,6 +20,10 @@ db = SQLAlchemy(app)
 # יצירת תיקיית Uploads אם לא קיימת
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# משתנה גלובלי לשליטה על זיהוי הפנים
+video_capture = None
+running = False
 
 # מודל למסד הנתונים
 class UserData(db.Model):
@@ -41,6 +48,55 @@ def convert_to_sketch(img):
     sketch_img = cv2.divide(gray_img, inverted_blur_img, scale=256.0)
     return sketch_img
 
+# פונקציה לעיבוד והזרמת הווידאו
+def generate_frames():
+    global video_capture, running
+
+    if video_capture is None or not video_capture.isOpened():
+        video_capture = cv2.VideoCapture(0)
+        if not video_capture.isOpened():
+            print("Error: Could not open webcam.")
+            return
+
+    running = True
+
+    try:
+        while running:
+            ret, frame = video_capture.read()
+            if not ret:
+                print("Error: Could not read frame from webcam.")
+                break
+
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            face_landmarks_list = face_recognition.face_landmarks(rgb_frame)
+
+            pil_image = Image.fromarray(rgb_frame)
+            d = ImageDraw.Draw(pil_image)
+
+            for face_landmarks in face_landmarks_list:
+                for facial_feature in face_landmarks.keys():
+                    d.line(face_landmarks[facial_feature], fill='red', width=5)
+
+            opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+            # המרת הפריים לפורמט JPEG
+            ret, buffer = cv2.imencode('.jpg', opencv_image)
+            frame = buffer.tobytes()
+
+            # שליחת הפריים כחלק מזרם MJPEG
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    except Exception as e:
+        print(f"Error: {e}")
+
+    finally:
+        if video_capture is not None:
+            video_capture.release()
+            video_capture = None
+        running = False
+        print("Video stream stopped and resources released.")
+
 # דף התחברות
 @app.route('/login/<username>')
 def login(username):
@@ -53,7 +109,6 @@ def welcome(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
 
-    # טיפול בשמירת נתונים טקסטואליים
     saved_data = ""
     if request.method == 'POST' and 'user_input' in request.form:
         data = request.form.get('user_input')
@@ -66,7 +121,6 @@ def welcome(username):
         db.session.commit()
         saved_data = data
 
-    # טיפול בהעלאת תמונה
     sketch_image = None
     if request.method == 'POST' and 'image' in request.files:
         file = request.files['image']
@@ -75,18 +129,15 @@ def welcome(username):
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
 
-            # עיבוד התמונה לסקיצה
             img = cv2.imread(filepath)
             sketch_img = convert_to_sketch(img)
             sketch_filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'sketch_{filename}')
             cv2.imwrite(sketch_filepath, sketch_img)
             sketch_image = f'sketch_{filename}'
 
-    # שליפת נתונים קיימים
     user_data = UserData.query.filter_by(username=username).first()
     saved_data = user_data.data if user_data else saved_data
 
-    # בדיקה אם קיימת תמונת משתמש בתיקיית db
     profile_image = f"{username}.jpg"
     profile_image_path = os.path.join('./db', profile_image)
     if not os.path.exists(profile_image_path):
@@ -100,13 +151,33 @@ def user_page(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
 
-    # בדיקה אם קיימת תמונת משתמש בתיקיית db
     profile_image = f"{username}.jpg"
     profile_image_path = os.path.join('./db', profile_image)
     if not os.path.exists(profile_image_path):
         profile_image = None
 
     return render_template('user_page.html', username=username, profile_image=profile_image)
+
+# נתיב להזרמת הווידאו
+@app.route('/video_feed/<username>')
+def video_feed(username):
+    if 'username' not in session or session['username'] != username:
+        return "Unauthorized", 401
+
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+# נתיב לעצירת הזרם
+@app.route('/stop_video_feed/<username>')
+def stop_video_feed(username):
+    global running, video_capture
+    if 'username' not in session or session['username'] != username:
+        return "Unauthorized", 401
+
+    running = False
+    if video_capture is not None:
+        video_capture.release()
+        video_capture = None
+    return "Video stream stopped."
 
 # נתיב להורדת התמונה המעובדת או תמונת פרופיל
 @app.route('/db/<filename>')

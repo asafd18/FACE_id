@@ -10,12 +10,12 @@
             padding: 0;
             font-family: 'Rubik', 'Segoe UI', Arial, sans-serif;
             background: linear-gradient(135deg, #a1c4fd, #c2e9fb);
-            height: 100vh;
+            min-height: 100vh; /* שינוי מ-height ל-min-height כדי לאפשר גלילה */
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start; /* שינוי מ-center ל-flex-start */
             color: #333;
-            overflow: hidden;
+            /* הסרת overflow: hidden כדי לאפשר גלילה */
         }
 
         .container {
@@ -26,6 +26,7 @@
             text-align: center;
             max-width: 600px;
             width: 90%;
+            margin: 20px 0; /* הוספת מרווח עליון ותחתון */
             animation: fadeIn 0.8s ease-in-out;
         }
 
@@ -119,7 +120,7 @@
             position: relative;
         }
 
-        #myVideo {
+        #myVideo, #streamVideo {
             width: 100%;
             border-radius: 10px;
             box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
@@ -157,15 +158,17 @@
         <h1>דף אישי של {{ username }}</h1>
         <p>ברוכים הבאים לדף האישי שלך! כאן תוכל להוסיף תוכן מותאם אישית בעתיד.</p>
         <div class="buttons-container">
-            <button onclick="startFaceRecognition()">זיהוי פנים</button>
-            <button onclick="location.href='/page2'">face regansition</button>
-            <button onclick="location.href='/page3'">face regansition</button>
-            <button onclick="location.href='/page4'">face regansition</button>
-            <button onclick="location.href='/page5'">ace regansition</button>
-            <button onclick="location.href='/page6'">ace regansition</button>
+            <button onclick="startFaceRecognition()">זיהוי פנים (דפדפן)</button>
+            <button onclick="startServerFaceRecognition()">זיהוי פנים (שרת)</button>
+            <button onclick="stopServerFaceRecognition()">עצירת זיהוי (שרת)</button>
+            <button onclick="location.href='/page3'">זיהוי פנים 3</button>
+            <button onclick="location.href='/page4'">זיהוי פנים 4</button>
+            <button onclick="location.href='/page5'">זיהוי פנים 5</button>
+            <button onclick="location.href='/page6'">זיהוי פנים 6</button>
         </div>
         <div id="videoContainer">
-            <video id="myVideo" autoplay playsinline></video>
+            <video id="myVideo" autoplay playsinline style="display: none;"></video>
+            <img id="streamVideo" src="" alt="Video Stream" style="display: none;">
             <canvas id="videoCanvas"></canvas>
         </div>
         <div id="log"></div>
@@ -177,6 +180,7 @@
     <script>
         let stream = null;
         let model = null;
+        let isServerStream = false;
 
         // טעינת המודל של זיהוי תווי פנים
         async function loadFaceDetectionModel() {
@@ -190,36 +194,36 @@
             }
         }
 
-        // הפעלת המצלמה וזיהוי הפנים
+        // הפעלת המצלמה וזיהוי הפנים בדפדפן
         async function startFaceRecognition() {
             const videoContainer = document.getElementById('videoContainer');
             const video = document.getElementById('myVideo');
+            const streamVideo = document.getElementById('streamVideo');
             const canvas = document.getElementById('videoCanvas');
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // הצגת הווידאו
+            // הסתרת זרם השרת והצגת הווידאו המקומי
+            streamVideo.style.display = 'none';
+            video.style.display = 'block';
             videoContainer.style.display = 'block';
+            isServerStream = false;
 
-            // גישה למצלמה
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 video.srcObject = stream;
 
-                // הגדרת גודל הקנבס להתאים לווידאו
                 video.onloadedmetadata = () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                 };
 
-                // טעינת המודל אם עדיין לא נטען
                 if (!model) {
                     await loadFaceDetectionModel();
                 }
 
-                // לולאה לזיהוי תווי פנים בזמן אמת
                 async function detectFaces() {
-                    if (!model || video.paused || video.ended) return;
+                    if (!model || video.paused || video.ended || isServerStream) return;
 
                     const predictions = await model.estimateFaces({
                         input: video,
@@ -227,7 +231,6 @@
                         flipHorizontal: false
                     });
 
-                    // ניקוי הקנבס
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                     log.innerHTML = `נמצאו ${predictions.length} פנים במסגרת זו.<br>`;
@@ -236,11 +239,9 @@
                         const keypoints = prediction.scaledMesh;
                         const annotations = prediction.annotations;
 
-                        // הדפסת נקודות תווי הפנים בדומה לקוד Python
                         for (let feature in annotations) {
                             const points = annotations[feature];
                             log.innerHTML += `ה-${feature} בפנים ${index + 1} מכיל את הנקודות: [${points.map(p => `[${p[0].toFixed(2)}, ${p[1].toFixed(2)}]`).join(', ')}]<br>`;
-                            // ציור קווים בין הנקודות
                             ctx.beginPath();
                             ctx.strokeStyle = 'red';
                             ctx.lineWidth = 2;
@@ -255,7 +256,6 @@
                     requestAnimationFrame(detectFaces);
                 }
 
-                // התחלת זיהוי הפנים
                 video.onplay = () => {
                     detectFaces();
                 };
@@ -265,10 +265,57 @@
             }
         }
 
+        // הפעלת זיהוי תווי פנים מהשרת
+        async function startServerFaceRecognition() {
+            const videoContainer = document.getElementById('videoContainer');
+            const video = document.getElementById('myVideo');
+            const streamVideo = document.getElementById('streamVideo');
+            const canvas = document.getElementById('videoCanvas');
+
+            // עצירת זיהוי הפנים המקומי אם הוא פעיל
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            video.style.display = 'none';
+            streamVideo.style.display = 'block';
+            videoContainer.style.display = 'block';
+            isServerStream = true;
+
+            // ניקוי הקנבס והלוג
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('log').innerHTML = '';
+
+            // הפעלת זרם הווידאו מהשרת
+            streamVideo.src = `/video_feed/{{ username }}`;
+        }
+
+        // עצירת זיהוי תווי הפנים מהשרת
+        async function stopServerFaceRecognition() {
+            const videoContainer = document.getElementById('videoContainer');
+            const streamVideo = document.getElementById('streamVideo');
+
+            try {
+                const response = await fetch(`/stop_video_feed/{{ username }}`);
+                const result = await response.text();
+                console.log(result);
+            } catch (error) {
+                console.error("Error stopping video feed:", error);
+            }
+
+            streamVideo.src = '';
+            videoContainer.style.display = 'none';
+            isServerStream = false;
+        }
+
         // סגירת המצלמה אם הדף נסגר
         window.onbeforeunload = () => {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
+            }
+            if (isServerStream) {
+                fetch(`/stop_video_feed/{{ username }}`);
             }
         };
     </script>
