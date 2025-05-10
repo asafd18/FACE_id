@@ -159,7 +159,7 @@
         <div class="buttons-container">
             <button onclick="startFaceRecognition()">זיהוי פנים (דפדפן)</button>
             <button onclick="startServerFaceRecognition()">זיהוי פנים (שרת)</button>
-            <button onclick="location.href='/page3'">זיהוי פנים 3</button>
+            <button onclick="startObjectDetection()">זיהוי אובייקטים</button>
             <button onclick="location.href='/page4'">זיהוי פנים 4</button>
             <button onclick="location.href='/page5'">זיהוי פנים 5</button>
             <button onclick="location.href='/page6'">זיהוי פנים 6</button>
@@ -179,6 +179,7 @@
         let stream = null;
         let model = null;
         let isServerStream = false;
+        let isObjectStream = false;
 
         // טעינת המודל של זיהוי תווי פנים
         async function loadFaceDetectionModel() {
@@ -201,11 +202,21 @@
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // הסתרת זרם השרת והצגת הווידאו המקומי
+            // עצירת זרם השרת או זיהוי האובייקטים אם הם פעילים
+            if (isServerStream) {
+                await fetch(`/stop_video_feed/{{ username }}`);
+                isServerStream = false;
+            }
+            if (isObjectStream) {
+                await fetch(`/stop_object_feed/{{ username }}`);
+                isObjectStream = false;
+            }
+
             streamVideo.style.display = 'none';
             video.style.display = 'block';
             videoContainer.style.display = 'block';
             isServerStream = false;
+            isObjectStream = false;
 
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -221,7 +232,7 @@
                 }
 
                 async function detectFaces() {
-                    if (!model || video.paused || video.ended || isServerStream) return;
+                    if (!model || video.paused || video.ended || isServerStream || isObjectStream) return;
 
                     const predictions = await model.estimateFaces({
                         input: video,
@@ -272,28 +283,29 @@
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // בדיקה אם הזרם כבר פעיל
+            // בדיקה אם זרם זיהוי הפנים כבר פעיל
             if (isServerStream) {
-                // עצירת הזרם אם הוא פעיל
                 try {
                     const response = await fetch(`/stop_video_feed/{{ username }}`);
                     const result = await response.text();
                     console.log(result);
                 } catch (error) {
-                    console.error("Error stopping video feed:", error);
+                    console.error("Error stopping face detection video feed:", error);
                 }
 
                 streamVideo.src = '';
                 videoContainer.style.display = 'none';
                 isServerStream = false;
-                // עצירת זיהוי הפנים המקומי אם הוא פעיל
                 if (stream) {
                     stream.getTracks().forEach(track => track.stop());
                     stream = null;
                 }
             } else {
-                // הפעלת הזרם אם הוא לא פעיל
-                // עצירת זיהוי הפנים המקומי אם הוא פעיל
+                // עצירת זרם זיהוי האובייקטים או המצלמה המקומית אם הם פעילים
+                if (isObjectStream) {
+                    await fetch(`/stop_object_feed/{{ username }}`);
+                    isObjectStream = false;
+                }
                 if (stream) {
                     stream.getTracks().forEach(track => track.stop());
                     stream = null;
@@ -302,13 +314,61 @@
                 streamVideo.style.display = 'block';
                 videoContainer.style.display = 'block';
                 isServerStream = true;
+                isObjectStream = false;
 
-                // ניקוי הקנבס והלוג
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 log.innerHTML = '';
 
-                // הפעלת זרם הווידאו מהשרת
-                streamVideo.src = `/video_feed/{{ username }}?t=${new Date().getTime()}`; // הוספת timestamp כדי למנוע קיבוע מטמון
+                streamVideo.src = `/video_feed/{{ username }}?t=${new Date().getTime()}`;
+            }
+        }
+
+        // הפעלת/עצירת זיהוי אובייקטים מהשרת (toggle)
+        async function startObjectDetection() {
+            const videoContainer = document.getElementById('videoContainer');
+            const video = document.getElementById('myVideo');
+            const streamVideo = document.getElementById('streamVideo');
+            const canvas = document.getElementById('videoCanvas');
+            const ctx = canvas.getContext('2d');
+            const log = document.getElementById('log');
+
+            // בדיקה אם זרם זיהוי האובייקטים כבר פעיל
+            if (isObjectStream) {
+                try {
+                    const response = await fetch(`/stop_object_feed/{{ username }}`);
+                    const result = await response.text();
+                    console.log(result);
+                } catch (error) {
+                    console.error("Error stopping object detection video feed:", error);
+                }
+
+                streamVideo.src = '';
+                videoContainer.style.display = 'none';
+                isObjectStream = False;
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+            } else {
+                // עצירת זרם זיהוי הפנים או המצלמה המקומית אם הם פעילים
+                if (isServerStream) {
+                    await fetch(`/stop_video_feed/{{ username }}`);
+                    isServerStream = false;
+                }
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                video.style.display = 'none';
+                streamVideo.style.display = 'block';
+                videoContainer.style.display = 'block';
+                isObjectStream = true;
+                isServerStream = false;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                log.innerHTML = '';
+
+                streamVideo.src = `/object_feed/{{ username }}?t=${new Date().getTime()}`;
             }
         }
 
@@ -319,6 +379,9 @@
             }
             if (isServerStream) {
                 fetch(`/stop_video_feed/{{ username }}`);
+            }
+            if (isObjectStream) {
+                fetch(`/stop_object_feed/{{ username }}`);
             }
         };
     </script>
