@@ -8,6 +8,7 @@ import face_recognition
 from PIL import Image, ImageDraw
 import torch
 import time
+# fhdjjdjvk
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
