@@ -8,7 +8,8 @@ import face_recognition
 from PIL import Image, ImageDraw
 import torch
 import time
-# fhdjjdjvk
+from mediapipe import solutions as mp_solutions
+import pickle
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
@@ -23,11 +24,27 @@ db = SQLAlchemy(app)
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# משתנים גלובליים לשליטה על זיהוי הפנים וזיהוי האובייקטים
+# משתנים גלובליים לשליטה על זיהוי הפנים, זיהוי האובייקטים וזיהוי שפת הסימנים
 video_capture = None
 running_face = False
 running_object = False
+running_sign_language = False
 model_yolo = None
+
+# הגדרת MediaPipe Hands לשפת סימנים
+mp_hands = mp_solutions.hands
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
+mp_drawing = mp_solutions.drawing_utils
+
+# טעינת המודל והסקיילר לשפת סימנים
+try:
+    with open('./sign_language_model.pkl', 'rb') as f:
+        sign_language_model = pickle.load(f)
+    with open('./sign_language_scaler.pkl', 'rb') as f:
+        sign_language_scaler = pickle.load(f)
+except FileNotFoundError:
+    print("Warning: Sign language model or scaler not found. Please train the model first.")
+
 
 # מודל למסד הנתונים
 class UserData(db.Model):
@@ -35,9 +52,11 @@ class UserData(db.Model):
     username = db.Column(db.String(100), nullable=False)
     data = db.Column(db.Text, nullable=True)
 
+
 # יצירת מסד הנתונים
 with app.app_context():
     db.create_all()
+
 
 # טעינת מודל YOLOv5
 def load_yolo_model():
@@ -52,9 +71,11 @@ def load_yolo_model():
         print("YOLOv5 model loaded successfully.")
     return model_yolo
 
+
 # פונקציה לבדיקת סיומת קובץ
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
 
 # פונקציה להמרת תמונה לסקיצה
 def convert_to_sketch(img):
@@ -65,17 +86,16 @@ def convert_to_sketch(img):
     sketch_img = cv2.divide(gray_img, inverted_blur_img, scale=256.0)
     return sketch_img
 
+
 # פונקציה לעיבוד והזרמת וידאו עבור זיהוי פנים
 def generate_frames():
     global video_capture, running_face
 
-    # וידוא שהמצלמה משוחררת לפני הפתיחה
     if video_capture is not None:
         video_capture.release()
         video_capture = None
         print("Previous video capture released (face detection).")
 
-    # פתיחת המצלמה
     video_capture = cv2.VideoCapture(0)
     if not video_capture.isOpened():
         print("Error: Could not open webcam (face detection).")
@@ -103,14 +123,12 @@ def generate_frames():
 
             opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
-            # המרת הפריים לפורמט JPEG
             ret, buffer = cv2.imencode('.jpg', opencv_image, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
             if not ret:
                 print("Error: Could not encode frame to JPEG (face detection).")
                 continue
             frame = buffer.tobytes()
 
-            # שליחת הפריים כחלק מזרם MJPEG
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
@@ -126,17 +144,16 @@ def generate_frames():
         running_face = False
         print("Face detection stream stopped and resources released.")
 
+
 # פונקציה לעיבוד והזרמת וידאו עבור זיהוי אובייקטים
 def generate_object_frames():
     global video_capture, running_object, model_yolo
 
-    # וידוא שהמצלמה משוחררת לפני הפתיחה
     if video_capture is not None:
         video_capture.release()
         video_capture = None
         print("Previous video capture released (object detection).")
 
-    # פתיחת המצלמה
     video_capture = cv2.VideoCapture(0)
     if not video_capture.isOpened():
         print("Error: Could not open webcam (object detection).")
@@ -145,7 +162,6 @@ def generate_object_frames():
     video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     print("Webcam opened successfully (object detection).")
 
-    # טעינת מודל YOLOv5
     model_yolo = load_yolo_model()
 
     running_object = True
@@ -157,23 +173,16 @@ def generate_object_frames():
                 print("Error: Could not read frame from webcam (object detection).")
                 break
 
-            # הקטנת גודל הפריים
             frame_resized = cv2.resize(frame, (640, 480))
-
-            # בצע זיהוי חפצים על כל פריים
             results = model_yolo(frame_resized)
-
-            # שימוש ב-render של YOLOv5 לציור מסגרות ותוויות כברירת מחדל
             frame_rendered = results.render()[0]
 
-            # המרת הפריים לפורמט JPEG עם איכות גבוהה
             ret, buffer = cv2.imencode('.jpg', frame_rendered, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
             if not ret:
                 print("Error: Could not encode frame to JPEG (object detection).")
                 continue
             frame = buffer.tobytes()
 
-            # שליחת הפריים כחלק מזרם MJPEG
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
@@ -189,11 +198,86 @@ def generate_object_frames():
         running_object = False
         print("Object detection stream stopped and resources released.")
 
+
+# פונקציה לעיבוד והזרמת וידאו עבור זיהוי שפת סימנים
+def extract_hand_landmarks(image):
+    """חילוץ נקודות מפתח של היד מתמונה"""
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = hands.process(image_rgb)
+    if results.multi_hand_landmarks:
+        landmarks = results.multi_hand_landmarks[0].landmark
+        return np.array([[lm.x, lm.y, lm.z] for lm in landmarks]).flatten()
+    return None
+
+
+def generate_sign_language_frames():
+    global video_capture, running_sign_language
+    if video_capture is not None:
+        video_capture.release()
+        video_capture = None
+        print("Previous video capture released (sign language detection).")
+
+    video_capture = cv2.VideoCapture(0)
+    if not video_capture.isOpened():
+        print("Error: Could not open webcam (sign language detection).")
+        return
+    video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    print("Webcam opened successfully (sign language detection).")
+
+    running_sign_language = True
+
+    try:
+        while running_sign_language:
+            ret, frame = video_capture.read()
+            if not ret:
+                print("Error: Could not read frame from webcam (sign language detection).")
+                break
+
+            frame_resized = cv2.resize(frame, (640, 480))
+            landmarks = extract_hand_landmarks(frame_resized)
+
+            if landmarks is not None:
+                landmarks_scaled = sign_language_scaler.transform([landmarks])
+                prediction = sign_language_model.predict(landmarks_scaled)[0]
+                confidence = sign_language_model.predict_proba(landmarks_scaled)[0].max()
+
+                cv2.putText(frame_resized, f"Letter: {prediction} ({confidence:.2f})",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                results = hands.process(cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB))
+                if results.multi_hand_landmarks:
+                    for hand_landmarks in results.multi_hand_landmarks:
+                        mp_drawing.draw_landmarks(frame_resized, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            ret, buffer = cv2.imencode('.jpg', frame_resized, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+            if not ret:
+                print("Error: Could not encode frame to JPEG (sign language detection).")
+                continue
+            frame = buffer.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    except Exception as e:
+        print(f"Error during sign language detection streaming: {e}")
+
+    finally:
+        if video_capture is not None:
+            video_capture.release()
+            video_capture = None
+            print("Video capture released in finally block (sign language detection).")
+            time.sleep(0.5)
+        running_sign_language = False
+        print("Sign language detection stream stopped and resources released.")
+
+
 # דף התחברות
 @app.route('/login/<username>')
 def login(username):
     session['username'] = username
     return redirect(url_for('welcome', username=username))
+
 
 # דף מותאם אישית עם עיבוד תמונה
 @app.route('/welcome/<username>', methods=['GET', 'POST'])
@@ -235,7 +319,9 @@ def welcome(username):
     if not os.path.exists(profile_image_path):
         profile_image = None
 
-    return render_template('welcome.html', username=username, saved_data=saved_data, sketch_image=sketch_image, profile_image=profile_image)
+    return render_template('welcome.html', username=username, saved_data=saved_data, sketch_image=sketch_image,
+                           profile_image=profile_image)
+
 
 # דף ריק מותאם למשתמש
 @app.route('/user_page/<username>')
@@ -250,13 +336,14 @@ def user_page(username):
 
     return render_template('user_page.html', username=username, profile_image=profile_image)
 
+
 # נתיב להזרמת וידאו עבור זיהוי פנים
 @app.route('/video_feed/<username>')
 def video_feed(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
-
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 # נתיב לעצירת זרם זיהוי פנים
 @app.route('/stop_video_feed/<username>')
@@ -264,7 +351,6 @@ def stop_video_feed(username):
     global running_face, video_capture
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
-
     running_face = False
     if video_capture is not None:
         video_capture.release()
@@ -273,21 +359,21 @@ def stop_video_feed(username):
         time.sleep(0.5)
     return "Face detection stream stopped."
 
+
 # נתיב להזרמת וידאו עבור זיהוי אובייקטים
 @app.route('/object_feed/<username>')
 def object_feed(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
-
     return Response(generate_object_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 # נתיב לעצירת זרם זיהוי אובייקטים
 @app.route('/stop_object_feed/<username>')
 def stop_object_feed(username):
-    global running_object, video_capture
+    global modeling_object, video_capture
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
-
     running_object = False
     if video_capture is not None:
         video_capture.release()
@@ -296,14 +382,40 @@ def stop_object_feed(username):
         time.sleep(0.5)
     return "Object detection stream stopped."
 
+
+# נתיב להזרמת וידאו עבור זיהוי שפת סימנים
+@app.route('/sign_language_feed/<username>')
+def sign_language_feed(username):
+    if 'username' not in session or session['username'] != username:
+        return "Unauthorized", 401
+    return Response(generate_sign_language_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+# נתיב לעצירת זרם זיהוי שפת סימנים
+@app.route('/stop_sign_language_feed/<username>')
+def stop_sign_language_feed(username):
+    global running_sign_language, video_capture
+    if 'username' not in session or session['username'] != username:
+        return "Unauthorized", 401
+    running_sign_language = False
+    if video_capture is not None:
+        video_capture.release()
+        video_capture = None
+        print("Video capture released in stop_sign_language_feed.")
+        time.sleep(0.5)
+    return "Sign language detection stream stopped."
+
+
 # נתיב להורדת התמונה המעובדת או תמונת פרופיל
 @app.route('/db/<filename>')
 def profile_file(filename):
     return send_file(os.path.join('./db', filename))
 
+
 @app.route('/Uploads/<filename>')
 def uploaded_file(filename):
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
