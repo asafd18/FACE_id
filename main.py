@@ -26,6 +26,12 @@ class App:
         )
         self.register_new_user_button_main_window.place(x=850, y=500)
 
+        # כפתור מנהלים בלבד
+        self.admin_button_main_window = util.get_button(
+            self.main_window, "Admin Only", 'blue', self.admin_login
+        )
+        self.admin_button_main_window.place(x=850, y=300)
+
         # תצוגת מצלמה
         self.webcam_label = util.get_img_label(self.main_window)
         self.webcam_label.place(x=10, y=0, width=700, height=500)
@@ -99,6 +105,8 @@ class App:
         self.login_button_main_window.place_forget()
         self.register_new_user_button_main_window.place_forget()
         self.webcam_label.place_forget()
+        # הסתרת כפתור "Admin Only" - שינוי חדש
+        self.admin_button_main_window.place_forget()
 
         # הצגת ההודעה על המסך
         unknown_user_label = tk.Label(self.main_window, text="Ups...\nUnknown user. Please register new user or try again.",
@@ -114,6 +122,8 @@ class App:
         self.login_button_main_window.place(x=850, y=400)
         self.register_new_user_button_main_window.place(x=850, y=500)
         self.webcam_label.place(x=10, y=0, width=700, height=500)
+        # החזרת כפתור "Admin Only" - שינוי חדש
+        self.admin_button_main_window.place(x=850, y=300)
 
         # מחיקת ההודעה והכפתור שנוספו
         for widget in self.main_window.winfo_children():
@@ -183,6 +193,97 @@ class App:
         imgtk = ImageTk.PhotoImage(image=image)
         label.imgtk = imgtk
         label.configure(image=imgtk)
+
+    def admin_login(self):
+        self.admin_login_window = tk.Toplevel(self.main_window)
+        self.admin_login_window.geometry("400x200+500+300")
+        self.admin_login_window.title("Admin Login")
+
+        password_label = tk.Label(
+            self.admin_login_window,
+            text="Enter Admin Password:",
+            font=("Arial", 14, "bold")
+        )
+        password_label.place(x=100, y=30)
+
+        self.password_entry = tk.Entry(
+            self.admin_login_window,
+            font=("Arial", 14),
+            show="*"
+        )
+        self.password_entry.place(x=100, y=60, width=200)
+
+        submit_button = util.get_button(
+            self.admin_login_window, "Submit", "green", self.verify_admin_password
+        )
+        submit_button.place(x=50, y=100 )
+
+    def verify_admin_password(self):
+        password = self.password_entry.get()
+        # סיסמה קבועה לצורך הדוגמה - יש לשנות אותה בסביבת פרודקשן
+        if password == "admin123":
+            self.admin_login_window.destroy()
+            self.show_admin_panel()
+        else:
+            util.msg_box("Error", "Incorrect password. Please try again.")
+            self.password_entry.delete(0, tk.END)
+
+    def show_admin_panel(self):
+        self.admin_panel_window = tk.Toplevel(self.main_window)
+        self.admin_panel_window.geometry("600x400+400+200")
+        self.admin_panel_window.title("Admin Panel")
+
+        title_label = tk.Label(
+            self.admin_panel_window,
+            text="Registered Users",
+            font=("Arial", 16, "bold")
+        )
+        title_label.pack(pady=10)
+
+        # יצירת טבלת משתמשים
+        users_frame = tk.Frame(self.admin_panel_window)
+        users_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+
+        # כותרות לטבלה
+        tk.Label(users_frame, text="Username", font=("Arial", 12, "bold"), borderwidth=1, relief="solid", padx=10, pady=5).grid(row=0, column=0, sticky="nsew")
+        tk.Label(users_frame, text="Image File", font=("Arial", 12, "bold"), borderwidth=1, relief="solid", padx=10, pady=5).grid(row=0, column=1, sticky="nsew")
+        tk.Label(users_frame, text="Actions", font=("Arial", 12, "bold"), borderwidth=1, relief="solid", padx=10, pady=5).grid(row=0, column=2, sticky="nsew")
+
+        # טעינת משתמשים מתיקיית db
+        users = [f.split(".jpg")[0] for f in os.listdir(self.db_dir) if f.endswith(".jpg")]
+        for i, username in enumerate(users, start=1):
+            tk.Label(users_frame, text=username, font=("Arial", 12), borderwidth=1, relief="solid", padx=10, pady=5).grid(row=i, column=0, sticky="nsew")
+            tk.Label(users_frame, text=f"{username}.jpg", font=("Arial", 12), borderwidth=1, relief="solid", padx=10, pady=5).grid(row=i, column=1, sticky="nsew")
+            delete_button = tk.Button(
+                users_frame,
+                text="Delete",
+                bg="red",
+                fg="white",
+                font=("Arial", 10),
+                command=lambda u=username: self.delete_user(u)
+            )
+            delete_button.grid(row=i, column=2, sticky="nsew", padx=2, pady=2)
+
+        # הגדרת רוחב עמודות
+        users_frame.grid_columnconfigure(0, weight=1)
+        users_frame.grid_columnconfigure(1, weight=1)
+        users_frame.grid_columnconfigure(2, weight=1)
+
+        # כפתור סגירה
+        close_button = util.get_button(self.admin_panel_window, "Close", "red", self.admin_panel_window.destroy)
+        close_button.pack(pady=20)
+
+    def delete_user(self, username):
+        # מחיקת קובץ התמונה מתיקיית db
+        user_image_path = os.path.join(self.db_dir, f"{username}.jpg")
+        if os.path.exists(user_image_path):
+            os.remove(user_image_path)
+            util.msg_box("Success", f"User {username} deleted successfully.")
+            # סגירת חלון הניהול ופתיחתו מחדש לעדכון התצוגה
+            self.admin_panel_window.destroy()
+            self.show_admin_panel()
+        else:
+            util.msg_box("Error", f"User {username} not found.")
 
     def start(self):
         self.main_window.mainloop()
