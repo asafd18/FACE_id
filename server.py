@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, session, redirect, url_for, send_file, Response
+from flask_socketio import SocketIO, emit
 from flask_sqlalchemy import SQLAlchemy
 import os
 import cv2
@@ -10,6 +11,9 @@ import torch
 import time
 from mediapipe import solutions as mp_solutions
 import pickle
+from pyzbar.pyzbar import decode
+import base64
+import threading
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
@@ -18,25 +22,30 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = './Uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
 
+socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
-# יצירת תיקיית Uploads אם לא קיימת
+# Variables for QR scanner
+latest_qr_data = "המתן לקריאת קוד QR..."
+capture_active = True
+
+# Create Uploads directory if it doesn't exist
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# משתנים גלובליים לשליטה על זיהוי הפנים, זיהוי האובייקטים וזיהוי שפת הסימנים
+# Global variables for controlling face detection, object detection, and sign language detection
 video_capture = None
 running_face = False
 running_object = False
 running_sign_language = False
 model_yolo = None
 
-# הגדרת MediaPipe Hands לשפת סימנים
+# MediaPipe Hands setup for sign language detection
 mp_hands = mp_solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
 mp_drawing = mp_solutions.drawing_utils
 
-# טעינת המודל והסקיילר לשפת סימנים
+# Load sign language model and scaler
 try:
     with open('./sign_language_model.pkl', 'rb') as f:
         sign_language_model = pickle.load(f)
@@ -45,39 +54,34 @@ try:
 except FileNotFoundError:
     print("Warning: Sign language model or scaler not found. Please train the model first.")
 
-
-# מודל למסד הנתונים
+# Database model
 class UserData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), nullable=False)
     data = db.Column(db.Text, nullable=True)
 
-
-# יצירת מסד הנתונים
+# Create database
 with app.app_context():
     db.create_all()
 
-
-# טעינת מודל YOLOv5
+# Load YOLOv5 model
 def load_yolo_model():
     global model_yolo
     if model_yolo is None:
         model_yolo = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-        model_yolo.conf = 0.1  # סף ביטחון נמוך
+        model_yolo.conf = 0.1  # Low confidence threshold
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         model_yolo = model_yolo.to(device)
         if device == 'cuda':
-            model_yolo = model_yolo.half()  # מצב FP16 להאצה
+            model_yolo = model_yolo.half()  # FP16 mode for acceleration
         print("YOLOv5 model loaded successfully.")
     return model_yolo
 
-
-# פונקציה לבדיקת סיומת קובץ
+# Check file extension
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-
-# פונקציה להמרת תמונה לסקיצה
+# Convert image to sketch
 def convert_to_sketch(img):
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     inverted_img = cv2.bitwise_not(gray_img)
@@ -86,8 +90,39 @@ def convert_to_sketch(img):
     sketch_img = cv2.divide(gray_img, inverted_blur_img, scale=256.0)
     return sketch_img
 
+# QR code video capture
+def capture_video():
+    global latest_qr_data, capture_active
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        latest_qr_data = "שגיאה: לא ניתן לגשת למצלמה. ודא שהמצלמה מחוברת והרשאות ניתנו."
+        socketio.emit('qr_update', {'data': latest_qr_data})
+        return
 
-# פונקציה לעיבוד והזרמת וידאו עבור זיהוי פנים
+    while capture_active:
+        ret, frame = cap.read()
+        if not ret:
+            latest_qr_data = "שגיאה: לא ניתן לקרוא וידאו"
+            socketio.emit('qr_update', {'data': latest_qr_data})
+            break
+
+        qr_codes = decode(frame)
+        if qr_codes:
+            qr_data = qr_codes[0].data.decode('utf-8')
+            if qr_data != latest_qr_data:
+                latest_qr_data = qr_data
+                socketio.emit('qr_update', {'data': qr_data})
+                capture_active = False
+                break
+
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_data = base64.b64encode(buffer).decode('utf-8')
+        socketio.emit('video_frame', {'image': frame_data})
+
+    cap.release()
+    socketio.emit('video_stopped', {'message': 'המצלמה כבויה'})
+
+# Generate frames for face detection
 def generate_frames():
     global video_capture, running_face
 
@@ -144,8 +179,7 @@ def generate_frames():
         running_face = False
         print("Face detection stream stopped and resources released.")
 
-
-# פונקציה לעיבוד והזרמת וידאו עבור זיהוי אובייקטים
+# Generate frames for object detection
 def generate_object_frames():
     global video_capture, running_object, model_yolo
 
@@ -198,10 +232,8 @@ def generate_object_frames():
         running_object = False
         print("Object detection stream stopped and resources released.")
 
-
-# פונקציה לעיבוד והזרמת וידאו עבור זיהוי שפת סימנים
+# Extract hand landmarks for sign language detection
 def extract_hand_landmarks(image):
-    """חילוץ נקודות מפתח של היד מתמונה"""
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = hands.process(image_rgb)
     if results.multi_hand_landmarks:
@@ -209,7 +241,7 @@ def extract_hand_landmarks(image):
         return np.array([[lm.x, lm.y, lm.z] for lm in landmarks]).flatten()
     return None
 
-
+# Generate frames for sign language detection
 def generate_sign_language_frames():
     global video_capture, running_sign_language
     if video_capture is not None:
@@ -271,15 +303,37 @@ def generate_sign_language_frames():
         running_sign_language = False
         print("Sign language detection stream stopped and resources released.")
 
+# Route for QR scanner page
+@app.route('/qr_scanner/<username>')
+def qr_scanner(username):
+    if 'username' not in session or session['username'] != username:
+        return "Unauthorized", 401
+    global latest_qr_data, capture_active
+    capture_active = True
+    latest_qr_data = "המתן לקריאת קוד QR..."  # Reset QR data on new scan
+    return render_template('index.html')
 
-# דף התחברות
+# SocketIO connect event for QR scanner
+@socketio.on('connect')
+def handle_connect():
+    global latest_qr_data
+    emit('qr_update', {'data': latest_qr_data})
+    if capture_active:
+        threading.Thread(target=capture_video, daemon=True).start()
+
+# SocketIO event to handle stop capture
+@socketio.on('stop_capture')
+def handle_stop_capture():
+    global capture_active
+    capture_active = False
+
+# Login route
 @app.route('/login/<username>')
 def login(username):
     session['username'] = username
     return redirect(url_for('welcome', username=username))
 
-
-# דף מותאם אישית עם עיבוד תמונה
+# Welcome page with image processing
 @app.route('/welcome/<username>', methods=['GET', 'POST'])
 def welcome(username):
     if 'username' not in session or session['username'] != username:
@@ -322,8 +376,7 @@ def welcome(username):
     return render_template('welcome.html', username=username, saved_data=saved_data, sketch_image=sketch_image,
                            profile_image=profile_image)
 
-
-# דף ריק מותאם למשתמש
+# User page route
 @app.route('/user_page/<username>')
 def user_page(username):
     if 'username' not in session or session['username'] != username:
@@ -336,16 +389,14 @@ def user_page(username):
 
     return render_template('user_page.html', username=username, profile_image=profile_image)
 
-
-# נתיב להזרמת וידאו עבור זיהוי פנים
+# Video feed route for face detection
 @app.route('/video_feed/<username>')
 def video_feed(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
-# נתיב לעצירת זרם זיהוי פנים
+# Stop face detection stream
 @app.route('/stop_video_feed/<username>')
 def stop_video_feed(username):
     global running_face, video_capture
@@ -359,19 +410,17 @@ def stop_video_feed(username):
         time.sleep(0.5)
     return "Face detection stream stopped."
 
-
-# נתיב להזרמת וידאו עבור זיהוי אובייקטים
+# Video feed route for object detection
 @app.route('/object_feed/<username>')
 def object_feed(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
     return Response(generate_object_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
-# נתיב לעצירת זרם זיהוי אובייקטים
+# Stop object detection stream
 @app.route('/stop_object_feed/<username>')
 def stop_object_feed(username):
-    global modeling_object, video_capture
+    global running_object, video_capture
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
     running_object = False
@@ -382,16 +431,14 @@ def stop_object_feed(username):
         time.sleep(0.5)
     return "Object detection stream stopped."
 
-
-# נתיב להזרמת וידאו עבור זיהוי שפת סימנים
+# Video feed route for sign language detection
 @app.route('/sign_language_feed/<username>')
 def sign_language_feed(username):
     if 'username' not in session or session['username'] != username:
         return "Unauthorized", 401
     return Response(generate_sign_language_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
-# נתיב לעצירת זרם זיהוי שפת סימנים
+# Stop sign language detection stream
 @app.route('/stop_sign_language_feed/<username>')
 def stop_sign_language_feed(username):
     global running_sign_language, video_capture
@@ -405,17 +452,14 @@ def stop_sign_language_feed(username):
         time.sleep(0.5)
     return "Sign language detection stream stopped."
 
-
-# נתיב להורדת התמונה המעובדת או תמונת פרופיל
+# Serve profile or uploaded images
 @app.route('/db/<filename>')
 def profile_file(filename):
     return send_file(os.path.join('./db', filename))
-
 
 @app.route('/Uploads/<filename>')
 def uploaded_file(filename):
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
-
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)

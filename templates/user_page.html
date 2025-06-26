@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>דף משתמש - {{ username }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
     <style>
         body {
             margin: 0;
@@ -157,14 +158,10 @@
         <h1>דף אישי של {{ username }}</h1>
         <p>ברוכים הבאים לדף האישי שלך! כאן תוכל להוסיף תוכן מותאם אישית בעתיד.</p>
         <div class="buttons-container">
-<!--            <button onclick="startFaceRecognition()">זיהוי פנים (דפדפן)</button>-->
             <button onclick="startServerFaceRecognition()">זיהוי פנים (שרת)</button>
             <button onclick="startObjectDetection()">זיהוי אובייקטים</button>
             <button onclick="startSignLanguageDetection()">זיהוי שפת סימנים</button>
-            <button onclick="startDeepFaceDetection()">זיהוי פנים - גיל, מגדר, מוצא</button>
-<!--            <button onclick="location.href='/page4'">זיהוי פנים 4</button>-->
-<!--            <button onclick="location.href='/page5'">זיהוי פנים 5</button>-->
-<!--            <button onclick="location.href='/page6'">זיהוי פנים 6</button>-->
+            <button onclick="location.href='/qr_scanner/{{ username }}'">סורק QR</button>
         </div>
         <div id="videoContainer">
             <video id="myVideo" autoplay playsinline style="display: none;"></video>
@@ -174,7 +171,6 @@
         <div id="log"></div>
     </div>
 
-    <!-- טעינת face-api.js מה-CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@0.0.3/dist/face-landmarks-detection.js"></script>
     <script>
@@ -184,7 +180,6 @@
         let isObjectStream = false;
         let isSignLanguageStream = false;
 
-        // טעינת המודל של זיהוי תווי פנים
         async function loadFaceDetectionModel() {
             try {
                 model = await faceLandmarksDetection.load(
@@ -196,7 +191,6 @@
             }
         }
 
-        // הפעלת המצלמה וזיהוי הפנים בדפדפן
         async function startFaceRecognition() {
             const videoContainer = document.getElementById('videoContainer');
             const video = document.getElementById('myVideo');
@@ -205,7 +199,6 @@
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // עצירת זרם השרת או זיהוי האובייקטים אם הם פעילים
             if (isServerStream) {
                 await fetch(`/stop_video_feed/{{ username }}`);
                 isServerStream = false;
@@ -217,10 +210,6 @@
             if (isSignLanguageStream) {
                 await fetch(`/stop_sign_language_feed/{{ username }}`);
                 isSignLanguageStream = false;
-            }
-            if (isObjectStream && streamVideo.src.includes('deepface_feed')) {
-                await fetch(`/stop_deepface_feed/{{ username }}`);
-                isObjectStream = false;
             }
 
             streamVideo.style.display = 'none';
@@ -286,7 +275,6 @@
             }
         }
 
-        // הפעלת/עצירת זיהוי תווי פנים מהשרת (toggle)
         async function startServerFaceRecognition() {
             const videoContainer = document.getElementById('videoContainer');
             const video = document.getElementById('myVideo');
@@ -295,7 +283,6 @@
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // בדיקה אם זרם זיהוי הפנים כבר פעיל
             if (isServerStream) {
                 try {
                     const response = await fetch(`/stop_video_feed/{{ username }}`);
@@ -313,13 +300,8 @@
                     stream = null;
                 }
             } else {
-                // עצירת זרם זיהוי האובייקטים או המצלמה המקומית אם הם פעילים
-                if (isObjectStream && streamVideo.src.includes('object_feed')) {
+                if (isObjectStream) {
                     await fetch(`/stop_object_feed/{{ username }}`);
-                    isObjectStream = false;
-                }
-                if (isObjectStream && streamVideo.src.includes('deepface_feed')) {
-                    await fetch(`/stop_deepface_feed/{{ username }}`);
                     isObjectStream = false;
                 }
                 if (isSignLanguageStream) {
@@ -344,7 +326,6 @@
             }
         }
 
-        // הפעלת/עצירת זיהוי אובייקטים מהשרת (toggle)
         async function startObjectDetection() {
             const videoContainer = document.getElementById('videoContainer');
             const video = document.getElementById('myVideo');
@@ -353,8 +334,7 @@
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // בדיקה אם זרם זיהוי האובייקטים כבר פעיל
-            if (isObjectStream && streamVideo.src.includes('object_feed')) {
+            if (isObjectStream) {
                 try {
                     const response = await fetch(`/stop_object_feed/{{ username }}`);
                     const result = await response.text();
@@ -371,14 +351,9 @@
                     stream = null;
                 }
             } else {
-                // עצירת זרם זיהוי הפנים או המצלמה המקומית אם הם פעילים
                 if (isServerStream) {
                     await fetch(`/stop_video_feed/{{ username }}`);
                     isServerStream = false;
-                }
-                if (isObjectStream && streamVideo.src.includes('deepface_feed')) {
-                    await fetch(`/stop_deepface_feed/{{ username }}`);
-                    isObjectStream = false;
                 }
                 if (isSignLanguageStream) {
                     await fetch(`/stop_sign_language_feed/{{ username }}`);
@@ -402,7 +377,6 @@
             }
         }
 
-        // הפעלת/עצירת זיהוי שפת סימנים מהשרת (toggle)
         async function startSignLanguageDetection() {
             const videoContainer = document.getElementById('videoContainer');
             const video = document.getElementById('myVideo');
@@ -411,7 +385,6 @@
             const ctx = canvas.getContext('2d');
             const log = document.getElementById('log');
 
-            // בדיקה אם זרם זיהוי שפת הסימנים כבר פעיל
             if (isSignLanguageStream) {
                 try {
                     const response = await fetch(`/stop_sign_language_feed/{{ username }}`);
@@ -429,17 +402,12 @@
                     stream = null;
                 }
             } else {
-                // עצירת זרמים אחרים אם הם פעילים
                 if (isServerStream) {
                     await fetch(`/stop_video_feed/{{ username }}`);
                     isServerStream = false;
                 }
-                if (isObjectStream && streamVideo.src.includes('object_feed')) {
+                if (isObjectStream) {
                     await fetch(`/stop_object_feed/{{ username }}`);
-                    isObjectStream = false;
-                }
-                if (isObjectStream && streamVideo.src.includes('deepface_feed')) {
-                    await fetch(`/stop_deepface_feed/{{ username }}`);
                     isObjectStream = false;
                 }
                 if (stream) {
@@ -460,65 +428,6 @@
             }
         }
 
-        // הפעלת/עצירת זיהוי פנים עם DeepFace מהשרת (toggle)
-        async function startDeepFaceDetection() {
-            const videoContainer = document.getElementById('videoContainer');
-            const video = document.getElementById('myVideo');
-            const streamVideo = document.getElementById('streamVideo');
-            const canvas = document.getElementById('videoCanvas');
-            const ctx = canvas.getContext('2d');
-            const log = document.getElementById('log');
-
-            // בדיקה אם זרם DeepFace כבר פעיל
-            if (isObjectStream && streamVideo.src.includes('deepface_feed')) {
-                try {
-                    const response = await fetch(`/stop_deepface_feed/{{ username }}`);
-                    const result = await response.text();
-                    console.log(result);
-                } catch (error) {
-                    console.error("Error stopping DeepFace detection video feed:", error);
-                }
-
-                streamVideo.src = '';
-                videoContainer.style.display = 'none';
-                isObjectStream = false;
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    stream = null;
-                }
-            } else {
-                // עצירת זרמים אחרים אם הם פעילים
-                if (isServerStream) {
-                    await fetch(`/stop_video_feed/{{ username }}`);
-                    isServerStream = false;
-                }
-                if (isObjectStream && streamVideo.src.includes('object_feed')) {
-                    await fetch(`/stop_object_feed/{{ username }}`);
-                    isObjectStream = false;
-                }
-                if (isSignLanguageStream) {
-                    await fetch(`/stop_sign_language_feed/{{ username }}`);
-                    isSignLanguageStream = false;
-                }
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    stream = null;
-                }
-                video.style.display = 'none';
-                streamVideo.style.display = 'block';
-                videoContainer.style.display = 'block';
-                isObjectStream = true;
-                isServerStream = false;
-                isSignLanguageStream = false;
-
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                log.innerHTML = '';
-
-                streamVideo.src = `/deepface_feed/{{ username }}?t=${new Date().getTime()}`;
-            }
-        }
-
-        // סגירת המצלמה אם הדף נסגר
         window.onbeforeunload = () => {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
@@ -526,11 +435,8 @@
             if (isServerStream) {
                 fetch(`/stop_video_feed/{{ username }}`);
             }
-            if (isObjectStream && streamVideo.src.includes('object_feed')) {
+            if (isObjectStream) {
                 fetch(`/stop_object_feed/{{ username }}`);
-            }
-            if (isObjectStream && streamVideo.src.includes('deepface_feed')) {
-                fetch(`/stop_deepface_feed/{{ username }}`);
             }
             if (isSignLanguageStream) {
                 fetch(`/stop_sign_language_feed/{{ username }}`);
