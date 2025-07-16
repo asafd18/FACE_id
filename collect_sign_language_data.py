@@ -10,20 +10,20 @@ class DataCollectionApp:
         self.main_window.geometry("1200x620+150+100")
         self.main_window.title("Collect Sign Language Data")
 
-        # תווית להזנת אות
+        # Label for entering a signal
         self.letter_label = tk.Label(self.main_window, text="Enter letter (A-Z):", font=("Arial", 18))
         self.letter_label.place(x=850, y=50)
         self.letter_entry = tk.Entry(self.main_window, font=("Arial", 18))
         self.letter_entry.place(x=850, y=80, width=100)
 
-        # כפתור לצילום תמונה
+        #Button to take a picture
         self.capture_button = tk.Button(
             self.main_window, text="Capture", bg="green", fg="white",
             font=("Arial", 20), command=self.capture_image
         )
         self.capture_button.place(x=850, y=400)
 
-        # תצוגת מצלמה
+        #Image display
         self.webcam_label = tk.Label(self.main_window)
         self.webcam_label.place(x=10, y=0, width=700, height=500)
 
@@ -55,7 +55,7 @@ class DataCollectionApp:
         if not os.path.exists(letter_dir):
             os.makedirs(letter_dir)
 
-        # שמירת התמונה
+        #Save picture
         img_count = len(os.listdir(letter_dir))
         img_path = os.path.join(letter_dir, f"{letter}_{img_count + 1}.jpg")
         cv2.imwrite(img_path, self.most_recent_capture)

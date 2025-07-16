@@ -2,9 +2,10 @@ import tkinter as tk
 import webbrowser
 import cv2
 from PIL import Image, ImageTk
-import util  # נדרש קובץ בשם util.py
+import util
 import os
 import subprocess
+
 
 
 class App:

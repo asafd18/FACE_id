@@ -26,7 +26,7 @@ socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
 # Variables for QR scanner
-latest_qr_data = "המתן לקריאת קוד QR..."
+latest_qr_data = "waiting for QR code..."
 capture_active = True
 
 # Create Uploads directory if it doesn't exist
